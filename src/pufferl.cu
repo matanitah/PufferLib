@@ -2860,6 +2860,10 @@ static EvalResult eval_loop(Ini* ini, PuffeRL* p, int mode, int verbose,
         dict_clear(&wipe);
     }
     double last_dash = 0;
+    // Cap on non-render eval rollouts (0 = unlimited). Without it, a policy
+    // that rarely finishes episodes never reaches eval_episodes and hangs sweeps.
+    long max_rollouts = (long)puf_ini_get(ini, "base", "eval_max_rollouts");
+    long num_rollouts = 0;
     while (true) {
         if (render) {
             puf_render(p->vec->envs);
@@ -2890,12 +2894,24 @@ static EvalResult eval_loop(Ini* ini, PuffeRL* p, int mode, int verbose,
             continue;
         }
         long n = dict_get(&el, "env/n");
-        if (n < eval_episodes) {
+        num_rollouts++;
+        int capped = max_rollouts > 0 && num_rollouts >= max_rollouts;
+        if (n < eval_episodes && !capped) {
             dict_clear(&el);
             continue;
         }
         if (verbose) {
             puf_dashboard_print(ini, p, show, board ? epoch : 0);
+        }
+        if (capped && n < eval_episodes) {
+            fprintf(stderr, "eval: hit eval_max_rollouts=%ld with %ld/%ld episodes\n",
+                max_rollouts, n, eval_episodes);
+        }
+        if (n <= 0) {
+            // Capped with no finished episodes: env/* keys are absent.
+            result.games = 0;
+            dict_clear(&el);
+            return result;
         }
         DictItem* m = dict_find(&el, metric_key);
         result.score = match ? dict_get(&el, "env/policy_0_score")
