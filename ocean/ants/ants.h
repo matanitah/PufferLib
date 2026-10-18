@@ -716,6 +716,13 @@ void puf_log(Log* log, Dict* out) {
     dict_set(out, "successful_trips", log->successful_trips);
     dict_set(out, "total_resets", log->total_resets);
     dict_set(out, "n", log->n);
+    // Deliveries per 1000 ant-steps. Unlike score, this counts the steps of ants
+    // that were reset without delivering, so idle ants lower it. log is already
+    // averaged per delivery: ant-steps per delivery = episode_length + 2048 * resets.
+    float steps_per_delivery = log->episode_length
+        + (float)ANT_RESET_INTERVAL * log->total_resets;
+    dict_set(out, "throughput",
+        steps_per_delivery > 0.0f ? 1000.0f / steps_per_delivery : 0.0f);
 }
 
 void puf_init(Env* env, Dict* kwargs) {
